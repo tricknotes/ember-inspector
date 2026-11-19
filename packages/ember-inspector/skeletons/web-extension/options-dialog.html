@@ -16,6 +16,21 @@
   <hr />
   <h1>Text Editor</h1>
   <div id="editor-selections"></div>
+  <hr />
+  <h1>AI Agents (MCP)</h1>
+  <label>
+    <input type="checkbox" data-settings="mcp-enabled">
+    Allow AI agents to connect (MCP)
+  </label>
+  <p class="mcp-help">
+    The extension connects to the <code>ember-inspector-mcp</code> server on
+    this computer. AI agents such as Claude Code can then read the component
+    tree, routes and objects of the Ember apps open in this browser.
+  </p>
+  <label>
+    Port
+    <input type="number" min="1" max="65535" placeholder="8743" data-settings="mcp-port">
+  </label>
   <script src="options.js"></script>
 </body>
 </html>

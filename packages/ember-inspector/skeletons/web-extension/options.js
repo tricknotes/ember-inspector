@@ -181,6 +181,7 @@
     chrome.storage.sync.get('options', function (data) {
       var options = data.options || {};
       setTomsterIconSetting(options.tomster);
+      setMcpSettings(options);
       renderPreferredEditorIntegrationSettings({
         selectedEditor: options.editor,
         savedPattern: options.editorPattern,
@@ -215,6 +216,26 @@
   function saveTomsterSetting() {
     storeOptions({ showTomster: this.checked });
   }
+
+  var McpEnabledSelector = '[data-settings=mcp-enabled]';
+  var McpPortSelector = '[data-settings=mcp-port]';
+
+  function setMcpSettings(options) {
+    document.querySelector(McpEnabledSelector).checked =
+      options.mcpEnabled === true;
+    document.querySelector(McpPortSelector).value = options.mcpPort || '';
+  }
+
+  document
+    .querySelector(McpEnabledSelector)
+    .addEventListener('change', function () {
+      storeOptions({ mcpEnabled: this.checked });
+    });
+
+  document.querySelector(McpPortSelector).addEventListener('change', function () {
+    var port = parseInt(this.value, 10);
+    storeOptions({ mcpPort: port > 0 && port < 65536 ? port : null });
+  });
 
   document.addEventListener('DOMContentLoaded', initialRender);
   document

@@ -191,6 +191,7 @@
     } else if (request && request.type === 'emberVersion') {
       // set the version info and update title
       activeTabs[sender.tab.id] = request.versions;
+      saveActiveTabs();
 
       updateTabAction(sender.tab.id);
       updateContextMenu();
@@ -206,6 +207,13 @@
         emberInspectorChromePort.postMessage(request);
       }
     }
+
+    sendToMcp({
+      event: 'message',
+      tabId: sender.tab.id,
+      frameId: sender.frameId,
+      message: request,
+    });
   });
 
   /**
@@ -225,4 +233,216 @@
   chrome.tabs.onRemoved.addListener(({ tabId }) => {
     delete activeTabs[tabId];
   });
+
+  /**
+   * The service worker can stop at any time and loses `activeTabs` then.
+   * The MCP bridge lists the Ember tabs from it, so keep a copy for the
+   * browser session.
+   */
+  var activeTabsRestored = chrome.storage.session
+    ? chrome.storage.session
+        .get('activeTabs')
+        .then(function (data) {
+          activeTabs = Object.assign(data.activeTabs || {}, activeTabs);
+        })
+        .catch(function () {})
+    : Promise.resolve();
+
+  function saveActiveTabs() {
+    if (chrome.storage.session) {
+      void chrome.storage.session
+        .set({ activeTabs: activeTabs })
+        .catch(function () {});
+    }
+  }
+
+  /**
+   * MCP bridge
+   *
+   * When the user turns it on in the options, the background script connects
+   * to the Ember Inspector MCP server on localhost (`ember-inspector-mcp`).
+   * AI agents then debug the Ember apps in the browser through that server.
+   *
+   * The server sends requests, `{ id, method, params }`:
+   * - `listTabs`: the tabs that run an Ember app.
+   * - `inject`: injects EmberDebug into a tab, as the inspector panel does.
+   * - `send`: sends a message to EmberDebug, as the inspector panel does.
+   * Every message from EmberDebug goes to the server as an event,
+   * `{ event: 'message', tabId, frameId, message }`.
+   */
+  var MCP_DEFAULT_PORT = 8743;
+  var MCP_ALARM = 'ember-inspector-mcp';
+  var mcpSocket = null;
+  var mcpRetryTimer = null;
+  var mcpRetryDelay = 1000;
+
+  function sendToMcp(payload) {
+    if (mcpSocket && mcpSocket.readyState === WebSocket.OPEN) {
+      mcpSocket.send(JSON.stringify(payload));
+    }
+  }
+
+  function getMcpOptions() {
+    return chrome.storage.sync.get('options').then(function (data) {
+      var options = data.options || {};
+      return {
+        enabled: options.mcpEnabled === true,
+        port: Number(options.mcpPort) || MCP_DEFAULT_PORT,
+      };
+    });
+  }
+
+  function updateMcpConnection() {
+    return getMcpOptions().then(function (options) {
+      if (chrome.alarms) {
+        if (options.enabled) {
+          // Wakes the service worker up to reconnect when the server starts later.
+          void chrome.alarms.create(MCP_ALARM, { periodInMinutes: 0.5 });
+        } else {
+          void chrome.alarms.clear(MCP_ALARM);
+        }
+      }
+
+      if (!options.enabled) {
+        disconnectMcp();
+      } else if (mcpSocket && mcpSocket.port !== options.port) {
+        disconnectMcp();
+        connectMcp(options.port);
+      } else if (!mcpSocket) {
+        connectMcp(options.port);
+      }
+    });
+  }
+
+  function connectMcp(port) {
+    clearTimeout(mcpRetryTimer);
+
+    var socket = new WebSocket('ws://127.0.0.1:' + port);
+    socket.port = port;
+    mcpSocket = socket;
+
+    socket.onopen = function () {
+      mcpRetryDelay = 1000;
+    };
+
+    socket.onmessage = function (event) {
+      var request;
+      try {
+        request = JSON.parse(event.data);
+      } catch {
+        return;
+      }
+      if (request.id === undefined) return;
+
+      handleMcpRequest(request).then(
+        function (result) {
+          sendToMcp({ id: request.id, result: result === undefined ? null : result });
+        },
+        function (error) {
+          sendToMcp({ id: request.id, error: String((error && error.message) || error) });
+        },
+      );
+    };
+
+    socket.onclose = function () {
+      if (mcpSocket !== socket) return;
+
+      mcpSocket = null;
+      // Retry while the service worker is awake; the alarm covers the rest.
+      mcpRetryTimer = setTimeout(updateMcpConnection, mcpRetryDelay);
+      mcpRetryDelay = Math.min(mcpRetryDelay * 2, 30000);
+    };
+  }
+
+  function disconnectMcp() {
+    clearTimeout(mcpRetryTimer);
+    if (mcpSocket) {
+      var socket = mcpSocket;
+      mcpSocket = null;
+      socket.close();
+    }
+  }
+
+  function handleMcpRequest(request) {
+    var params = request.params || {};
+
+    switch (request.method) {
+      case 'listTabs':
+        return listEmberTabs();
+
+      case 'inject':
+        return chrome.tabs
+          .sendMessage(params.tabId, {
+            type: 'inject-ember-debug',
+            value: chrome.runtime.getURL('{{PANE_ROOT}}/ember_debug.js'),
+          })
+          .catch(ignoreMissingReceiver);
+
+      case 'send':
+        return chrome.tabs
+          .sendMessage(
+            params.tabId,
+            Object.assign({}, params.message, { from: 'devtools' }),
+          )
+          .catch(ignoreMissingReceiver);
+
+      default:
+        return Promise.reject(new Error('Unknown method ' + request.method));
+    }
+  }
+
+  function listEmberTabs() {
+    var focusedTabId;
+
+    return Promise.all([
+      activeTabsRestored,
+      chrome.tabs
+        .query({ active: true, lastFocusedWindow: true })
+        .then(function (tabs) {
+          focusedTabId = tabs[0] && tabs[0].id;
+        }),
+    ]).then(function () {
+      return Promise.all(
+        Object.keys(activeTabs).map(function (id) {
+          var tabId = Number(id);
+          return chrome.tabs.get(tabId).then(
+            function (tab) {
+              return {
+                tabId: tabId,
+                active: tabId === focusedTabId,
+                title: tab.title,
+                url: tab.url,
+                libraries: activeTabs[id],
+                devtoolsOpen: !!emberInspectorChromePorts[tabId],
+              };
+            },
+            function () {
+              // The tab is gone.
+              delete activeTabs[id];
+              saveActiveTabs();
+              return null;
+            },
+          );
+        }),
+      ).then(function (tabs) {
+        return tabs.filter(Boolean);
+      });
+    });
+  }
+
+  if (chrome.alarms) {
+    chrome.alarms.onAlarm.addListener(function (alarm) {
+      if (alarm.name === MCP_ALARM) {
+        void updateMcpConnection();
+      }
+    });
+  }
+
+  chrome.storage.onChanged.addListener(function (changes, areaName) {
+    if (areaName === 'sync' && changes.options) {
+      void updateMcpConnection();
+    }
+  });
+
+  void updateMcpConnection();
 })();

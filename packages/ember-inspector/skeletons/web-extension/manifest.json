@@ -12,7 +12,7 @@
     "128": "{{PANE_ROOT}}/assets/images/icon128.png"
   },
 
-  "permissions": ["storage", "contextMenus"],
+  "permissions": ["storage", "contextMenus", "alarms"],
   "host_permissions": ["<all_urls>"],
 
   "content_security_policy": {
