@@ -19,6 +19,7 @@ The test files are at the top of this folder. Everything else is in `helpers/`.
 | --- | --- |
 | `inspector-test.mjs` | Runs the checks for the browser in `E2E_BROWSER`. |
 | `firefox-test.mjs` | Tests that only apply to Firefox. |
+| `mcp-test.mjs` | Debugs the test apps through `ember-inspector-mcp`, as an AI agent does. Only Chrome runs it. |
 | `helpers/checks.mjs` | The happy paths. Every browser runs all of them against every test app. |
 | `helpers/chrome.mjs`, `helpers/firefox.mjs`, `helpers/safari.mjs` | One driver for each browser. Each one opens the inspector and gives the checks a `page` and an `inspector`. |
 | `helpers/marionette.mjs`, `helpers/webdriver.mjs` | Clients for the Firefox and WebDriver protocols. |
