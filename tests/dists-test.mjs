@@ -122,7 +122,10 @@ describe('pnpm build', { timeout: 300_000 }, () => {
     assert.equal(chrome.icons['16'], `${PANE}/assets/images/icon16.png`);
     assert.ok(existsSync(join(dist, 'chrome', chrome.icons['16'])));
     assert.deepEqual(chrome.background, { service_worker: 'background.js' });
-    assert.deepEqual(firefox.background, { scripts: ['background.js'] });
+    assert.deepEqual(firefox.background, {
+      scripts: ['mcp-bridge.js', 'background.js'],
+    });
+    assert.ok(existsSync(join(dist, 'chrome', 'mcp-bridge.js')));
   });
 
   test('the devtools panel points at the pane', () => {

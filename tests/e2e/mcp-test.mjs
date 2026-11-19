@@ -98,6 +98,23 @@ for (let app of apps) {
         assert.match(text, /Ember \d+\.\d+/);
       });
 
+      test('lists the tools of the extension', { timeout: TIMEOUT }, async () => {
+        let { tools } = await client.listTools();
+
+        assert.deepEqual(
+          tools.map((tool) => tool.name),
+          [
+            'ember_inspector_status',
+            'list_ember_tabs',
+            'get_app_info',
+            'get_current_route',
+            'get_route_tree',
+            'get_component_tree',
+            'inspect_object',
+          ],
+        );
+      });
+
       test('shows the app info', { timeout: TIMEOUT }, async () => {
         let text = await callTool('get_app_info');
 

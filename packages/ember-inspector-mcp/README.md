@@ -6,7 +6,9 @@ An [MCP](https://modelcontextprotocol.io) server that lets an AI agent, such as 
 AI agent ──MCP (stdio)── ember-inspector-mcp ──WebSocket (127.0.0.1)── Ember Inspector extension ── EmberDebug in the tab
 ```
 
-The extension already runs EmberDebug in the page for the inspector panel. The server sends EmberDebug the same messages as the panel, so you do not need to open DevTools.
+The tools live in the extension, in `packages/ember-inspector/skeletons/web-extension/mcp-bridge.js`. This server only relays them: it lists the tools the extension has, and passes each call to it. So a new extension version brings new tools, and the server does not change. When the extension connects, the server tells the agent that the tool list changed.
+
+The extension talks to EmberDebug with the same messages as the inspector panel, and injects it the same way, so you do not need to open DevTools.
 
 ## Setup
 
@@ -26,7 +28,13 @@ The extension connects within 30 seconds after the server starts.
 
 ## Tools
 
-All tools only read. They take an optional `tabId`. Without one, they use the only Ember tab, or else the focused one.
+The server has one tool of its own:
+
+| Tool | What it shows |
+| --- | --- |
+| `ember_inspector_status` | Whether the extension is connected, its version and tools, or how to connect it. |
+
+The extension brings the others. They all only read. They take an optional `tabId`. Without one, they use the only Ember tab, or else the focused one.
 
 | Tool | What it shows |
 | --- | --- |
@@ -46,6 +54,10 @@ An object id stays valid until the component tree changes. Then get the tree aga
 - The extension connects only after you turn it on in the options.
 
 Anyone who can run programs on your computer can still connect, as with any local debugging port.
+
+## Adding a tool
+
+Add it to the `tools` list in `mcp-bridge.js`, with an MCP definition and a `run` function that returns text. Then reload the extension. A running server picks the new tool up when the extension reconnects.
 
 ## Known limits
 

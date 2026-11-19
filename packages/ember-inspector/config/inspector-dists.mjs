@@ -234,7 +234,7 @@ function writeWebExtension(ui, dest, mode, dist) {
   if (dist === 'firefox') {
     replacements.push([
       '"service_worker": "background.js"',
-      '"scripts": ["background.js"]',
+      '"scripts": ["mcp-bridge.js", "background.js"]',
     ]);
   }
 

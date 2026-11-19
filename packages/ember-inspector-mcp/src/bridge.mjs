@@ -15,9 +15,8 @@ const PING_INTERVAL = 20_000;
  *
  * Messages from the server are requests: `{ id, method, params }`,
  * answered with `{ id, result }` or `{ id, error }`.
- * Messages from the extension without an `id` are events, for example
- * `{ event: 'message', tabId, frameId, message }` for everything EmberDebug
- * posts in a tab.
+ * See skeletons/web-extension/mcp-bridge.js in the ember-inspector package
+ * for the methods.
  */
 export class ExtensionBridge extends EventEmitter {
   #server = null;
@@ -25,6 +24,11 @@ export class ExtensionBridge extends EventEmitter {
   #nextId = 1;
   #pending = new Map();
   #pingTimer = null;
+
+  /**
+   * Why the server could not listen, if it could not.
+   */
+  startError = null;
 
   constructor({ host = '127.0.0.1', port = DEFAULT_PORT } = {}) {
     super();
@@ -70,6 +74,7 @@ export class ExtensionBridge extends EventEmitter {
    * Resolves once an extension is connected, or rejects after `timeout`.
    */
   async waitForConnection(timeout) {
+    if (this.startError) throw new Error(this.startError);
     if (this.isConnected) return;
 
     await new Promise((resolve, reject) => {
@@ -89,6 +94,10 @@ export class ExtensionBridge extends EventEmitter {
 
   request(method, params = {}, { timeout = 5000 } = {}) {
     let socket = this.#socket;
+
+    if (this.startError) {
+      return Promise.reject(new Error(this.startError));
+    }
 
     if (!socket) {
       return Promise.reject(new NotConnectedError(this.port));
@@ -150,8 +159,6 @@ export class ExtensionBridge extends EventEmitter {
       } else {
         pending.resolve(payload.result);
       }
-    } else if (payload.event === 'message') {
-      this.emit('message', payload);
     }
   }
 }
